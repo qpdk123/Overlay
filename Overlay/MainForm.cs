@@ -164,6 +164,7 @@ namespace Overlay
         {
             GetWindowRect(this.hwnd, out RECT rect);
             SetWindowPos(this.Handle, IntPtr.Zero, rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top, 0x0000);
+            this.Invalidate();
         }
 
         private void dF_Panel1_Paint(object sender, PaintEventArgs e)
@@ -204,12 +205,12 @@ namespace Overlay
                             }
                             else
                             {
-                                g.DrawString(
+                            g.DrawString(
                                 string.Format("({0}, {1}) [{2} m]", LocationData.Ins[n].pos.X, LocationData.Ins[n].pos.Y, range),
                                 this.font,
                                 this.brush_dot_Magenta,
                                 0, 0);
-                            }
+                        }
                             
                         }
                         else

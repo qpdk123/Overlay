@@ -42,7 +42,6 @@ namespace Overlay.Objects
 
         public int Length
         {
-            get { return this.items.Count; }
         }
 
 
