@@ -2,6 +2,7 @@ using Overlay.Objects;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Modules;
 
 namespace Overlay
 {
@@ -29,36 +30,15 @@ namespace Overlay
         private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
         [DllImport("user32.dll")]
         internal static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, int nFlags);
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetDC(IntPtr hwnd);
-        [DllImport("user32.dll")]
-        private static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
-        // 비트블럿 함수 가져오기
-        [DllImport("gdi32.dll")]
-        private static extern bool BitBlt(IntPtr hdcDest, int nXDest, int nYDest, int nWidth, int nHeight, IntPtr hdcSrc, int nXSrc, int nYSrc, int dwRop);
-        //핫키등록
-        [DllImport("user32.dll")]
-        private static extern int RegisterHotKey(int hwnd, int id, int fsModifiers, int vk);
-        //핫키제거
-        [DllImport("user32.dll")]
-        private static extern int UnregisterHotKey(int hwnd, int id);
         #endregion
 
         private IntPtr hwnd = IntPtr.Zero;
-        private ThreadTimer timer = default(ThreadTimer);
+        private ThreadTimer timer_calc = null;
+        private ThreadTimer timer_display = null;
+        private object _locker = new object();
 
         private int __x, __y; //크롭 위치 조정용
-
-        private Pen pen_line = new Pen(new SolidBrush(Color.Red), 2);
-        private Pen pen_dest = new Pen(new SolidBrush(Color.LawnGreen), 4);
-        private SolidBrush brush_dot_blue = new SolidBrush(Color.Blue);
-        private SolidBrush brush_dot_red = new SolidBrush(Color.Red);
-        private SolidBrush brush_dot_orange = new SolidBrush(Color.DarkOrange);
-        private SolidBrush brush_dot_green = new SolidBrush(Color.Green);
-        private SolidBrush brush_dot_Magenta = new SolidBrush(Color.DarkMagenta);
-        private Font font = new Font("Arial", 14, FontStyle.Bold);
-
-        private Point loc_map_hd = new Point(98, 201);
+        private Point loc_map_hd = new Point(88, 173);
 
         public MainForm()
         {
@@ -67,19 +47,27 @@ namespace Overlay
 
         public MainForm(IntPtr _hwnd)
         {
-            this.hwnd = _hwnd;
-            InitializeComponent();
+            try
+            {
+                this.hwnd = _hwnd;
+                InitializeComponent();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+
         }
 
-        protected override CreateParams CreateParams
-        {
-            get
-            {
-                CreateParams cp = base.CreateParams;
-                cp.ExStyle |= 0x02000000; //WS_EX_COMPOSITED
-                return cp;
-            }
-        }
+        //protected override CreateParams CreateParams
+        //{
+        //    get
+        //    {
+        //        CreateParams cp = base.CreateParams;
+        //        cp.ExStyle |= 0x02000000; //WS_EX_COMPOSITED
+        //        return cp;
+        //    }
+        //}
 
         private void MainForm_Load(object sender, EventArgs e)
         {
@@ -87,38 +75,105 @@ namespace Overlay
             GetWindowRect(this.hwnd, out RECT rect);
             SetWindowPos(this.hwnd, IntPtr.Zero, rect.Left, rect.Top, 1600, 900, 0x0000);
 
+            //랜더링 객체 초기화
+            DirectX2DRender.Ins.Initialize(this.panel1);
+
             //Overlay Codes
-            this.BackColor = Color.Wheat;
-            this.TransparencyKey = Color.Wheat;
+            this.BackColor = Color.Black;
+            this.TransparencyKey = Color.Black;
             this.TopMost = true;
-            this.FormBorderStyle = FormBorderStyle.None;
+            //this.FormBorderStyle = FormBorderStyle.None;
             int initialStyle = GetWindowLong(this.Handle, -20);
             SetWindowLong(this.Handle, -20, initialStyle | 0x80000 | 0x20);
 
             //Thread Timer Init
-            this.timer = new ThreadTimer(500);
-            this.timer.Tick += Timer_Tick;
+            this.timer_calc = new ThreadTimer(100);
+            this.timer_calc.Tick += Timer_calc_Tick;
+            this.timer_display = new ThreadTimer(100);
+            this.timer_display.Tick += Timer_display_Tick;
 
-            //Regist Global Hotkey
-            RegisterHotKey((int)this.Handle, 0, 0x0, (int)Keys.Up);
-            RegisterHotKey((int)this.Handle, 1, 0x0, (int)Keys.Down);
-            RegisterHotKey((int)this.Handle, 2, 0x0, (int)Keys.Left);
-            RegisterHotKey((int)this.Handle, 3, 0x0, (int)Keys.Right);
-            RegisterHotKey((int)this.Handle, 4, 0x0, (int)Keys.End);
+            HotKeyManager.Ins.Initialize(this.Handle);
+            HotKeyManager.Ins.Regist(0, Keys.None, Keys.Up);
+            HotKeyManager.Ins.Regist(1, Keys.None, Keys.Down);
+            HotKeyManager.Ins.Regist(2, Keys.None, Keys.Left);
+            HotKeyManager.Ins.Regist(3, Keys.None, Keys.Right);
+            HotKeyManager.Ins.Regist(4, Keys.None, Keys.End);
+
+            HotKeyManager.Ins.Regist(5, Keys.None, Keys.NumPad4);
+            HotKeyManager.Ins.Regist(6, Keys.None, Keys.NumPad6);
+            HotKeyManager.Ins.Regist(7, Keys.None, Keys.NumPad8);
+            HotKeyManager.Ins.Regist(8, Keys.None, Keys.NumPad2);
 
             this.TopMost = true;
 
+            this.timer_calc.Run();
+            this.timer_display.Run();
             this.timer1.Start();
         }
 
-        private void Timer_Tick()
+        private void Timer_display_Tick()
         {
+            if (LocationData.Ins.charPos.isSelected == false) { return; }
+
+            lock (this._locker)
+            {
+
+                DirectX2DRender.Ins.BeginDraw(); //그리기 시작
+                DirectX2DRender.Ins.Clear(Color.Black); //배경색 지정
+
+                //맵박스 그리기
+                DirectX2DRender.Ins.DrawRectangle(this.loc_map_hd.X, this.loc_map_hd.Y, Properties.Resources.mapHD.Width, Properties.Resources.mapHD.Height, Color.Red, false);
+                Point me = this.CalcScreenLocation(LocationData.Ins.charPos.pos.X, LocationData.Ins.charPos.pos.Y);
+                DirectX2DRender.Ins.DrawEllipse(me.X, me.Y, Color.LawnGreen, 10f, 10f, true); //내 위치 그리기
+
+                for (int n = 0; n < LocationData.Ins.Length; ++n)
+                {
+                    Point loc = this.CalcScreenLocation(LocationData.Ins[n].pos.X, LocationData.Ins[n].pos.Y);
+                    if (LocationData.Ins[n].isSelected == true)
+                    {
+                        DirectX2DRender.Ins.DrawLine(me.X, me.Y, loc.X, loc.Y, Color.Lime);
+                        DirectX2DRender.Ins.DrawEllipse(me.X, me.Y, Color.LawnGreen, 10f, 10f, true); //내 위치 그리기
+                        DirectX2DRender.Ins.DrawEllipse(loc.X, loc.Y, Color.LawnGreen, 5f, 5f, true);
+
+                        int range = (int)Math.Sqrt(Math.Pow(LocationData.Ins.charPos.pos.X - LocationData.Ins[n].pos.X, 2) +
+                            Math.Pow(LocationData.Ins.charPos.pos.Y - LocationData.Ins[n].pos.Y, 2));
+
+                        //1칸 범위내에서 지도를 열수 있다.
+                        if (LocationData.Ins[n].pos.X + 1 >= LocationData.Ins.charPos.pos.X &&
+                            LocationData.Ins[n].pos.X - 1 <= LocationData.Ins.charPos.pos.X &&
+                            LocationData.Ins[n].pos.Y + 1 >= LocationData.Ins.charPos.pos.Y &&
+                            LocationData.Ins[n].pos.Y - 1 <= LocationData.Ins.charPos.pos.Y)
+                        {
+                            string text = string.Format("({0}, {1})", LocationData.Ins[n].pos.X, LocationData.Ins[n].pos.Y);
+                            DirectX2DRender.Ins.DrawText(this.loc_map_hd.X, this.loc_map_hd.Y, text, "Arial", 20f, Color.LawnGreen);
+                        }
+                        else
+                        {
+                            string text = string.Format("({0}, {1}) [{2} m]", LocationData.Ins[n].pos.X, LocationData.Ins[n].pos.Y, range);
+                            DirectX2DRender.Ins.DrawText(this.loc_map_hd.X, this.loc_map_hd.Y, text, "Arial", 20f, Color.Red);
+                        }
+                    }
+                    else
+                    {
+                        DirectX2DRender.Ins.DrawEllipse(loc.X, loc.Y, Color.Blue, 5f, 5f, true);
+                    }
+                }
+
+                DirectX2DRender.Ins.EndDraw();
+            }
+        }
+
+        private void Timer_calc_Tick()
+        {
+            Bitmap rawImage = null;
+            Bitmap cropImage = null;
             try
             {
-                Bitmap rawImage = this.GetScreenImage();    //전체 이미지
+                rawImage = this.GetScreenImage();    //전체 이미지
                 Rectangle rectPos = new Rectangle(127, 152, 115, 40);   //크롭할 영역
-                Bitmap cropImage = TessOCR.Ins.ImageCrop(rawImage, rectPos);    //전체 이미지에서 크롭
+                cropImage = TessOCR.Ins.ImageCrop(rawImage, rectPos);    //전체 이미지에서 크롭    
                 string ret = TessOCR.Ins.ReadFromMap(cropImage);    //OCR
+                
                 ret = TessOCR.Ins.ExtractCoordinates(ret);  //정규식 파싱
                 if (string.IsNullOrEmpty(ret) == false)
                 {
@@ -136,7 +191,6 @@ namespace Overlay
                         {
                             LocationData.Ins.DeSelectAll();
                             loc.isSelected = true;
-                            this.timer.Interval = 500;
                         }
                     }
                     else
@@ -151,83 +205,21 @@ namespace Overlay
             }
             catch (Exception e)
             {
-                Debug.WriteLine(e.ToString());
+                //Debug.WriteLine(e.ToString());
             }
             finally
             {
-                GC.Collect();
-                this.Invalidate();
-            }
-        }
-
-        private void timer1_Tick(object sender, EventArgs e)
-        {
-            GetWindowRect(this.hwnd, out RECT rect);
-            SetWindowPos(this.Handle, IntPtr.Zero, rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top, 0x0000);
-            this.Invalidate();
-        }
-
-        private void dF_Panel1_Paint(object sender, PaintEventArgs e)
-        {
-            if (LocationData.Ins.charPos.isSelected == false) { this.timer.Interval = 1000; return; }
-
-            using (Bitmap ov = new Bitmap(Properties.Resources.mapHD.Width, Properties.Resources.mapHD.Height))
-            {
-                using (Graphics g = Graphics.FromImage(ov))
-                {
-                    g.DrawRectangle(this.pen_line, 0, 0, Properties.Resources.mapHD.Width, Properties.Resources.mapHD.Height);
-                    int dotSize = 10;
-                    Point me = this.CalcScreenLocation(LocationData.Ins.charPos.pos.X, LocationData.Ins.charPos.pos.Y);
-                    g.FillEllipse(this.brush_dot_green, me.X - dotSize / 2, me.Y - dotSize / 2, dotSize, dotSize);
-                    for (int n = 0; n < LocationData.Ins.Length; ++n)
-                    {
-                        Point dot = this.CalcScreenLocation(LocationData.Ins[n].pos.X, LocationData.Ins[n].pos.Y);
-
-                        if (LocationData.Ins[n].isSelected == true)
-                        {
-                            g.FillRectangle(this.brush_dot_green, dot.X - dotSize / 2, dot.Y - dotSize / 2, dotSize, dotSize);
-                            g.DrawLine(this.pen_dest, me, dot);
-
-                            int range = (int)Math.Sqrt(Math.Pow(LocationData.Ins.charPos.pos.X - LocationData.Ins[n].pos.X, 2) +
-                                Math.Pow(LocationData.Ins.charPos.pos.Y - LocationData.Ins[n].pos.Y, 2));
-
-                            //1칸 범위내에서 지도를 열수 있다.
-                            if(LocationData.Ins[n].pos.X + 1 >= LocationData.Ins.charPos.pos.X &&
-                                LocationData.Ins[n].pos.X - 1 <= LocationData.Ins.charPos.pos.X &&
-                                LocationData.Ins[n].pos.Y + 1 >= LocationData.Ins.charPos.pos.Y &&
-                                LocationData.Ins[n].pos.Y - 1 <= LocationData.Ins.charPos.pos.Y)
-                            {
-                                g.DrawString(
-                                string.Format("({0}, {1})", LocationData.Ins[n].pos.X, LocationData.Ins[n].pos.Y),
-                                this.font,
-                                this.brush_dot_green,
-                                0, 0);
-                            }
-                            else
-                            {
-                            g.DrawString(
-                                string.Format("({0}, {1}) [{2} m]", LocationData.Ins[n].pos.X, LocationData.Ins[n].pos.Y, range),
-                                this.font,
-                                this.brush_dot_Magenta,
-                                0, 0);
-                        }
-                            
-                        }
-                        else
-                        {
-                            g.FillEllipse(this.brush_dot_blue, dot.X - dotSize / 2, dot.Y - dotSize / 2, dotSize, dotSize);
-                        }
-                    }
-
-                    e.Graphics.DrawImage(ov, this.loc_map_hd);
-                }
+                if (rawImage != null)
+                    rawImage.Dispose();
+                if (cropImage != null)
+                    cropImage.Dispose();
             }
         }
 
         private Point CalcScreenLocation(int x, int y)
         {
-            int _x = (int)(Properties.Resources.mapHD.Width / (double)148 * x);
-            int _y = Properties.Resources.mapHD.Height - (int)((Properties.Resources.mapHD.Height / (double)200) * (double)y);
+            int _x = (int)(Properties.Resources.mapHD.Width / (double)148 * x) + this.loc_map_hd.X;
+            int _y = Properties.Resources.mapHD.Height - (int)((Properties.Resources.mapHD.Height / (double)200) * (double)y) + this.loc_map_hd.Y;
 
             return new System.Drawing.Point(_x, _y);
         }
@@ -244,35 +236,9 @@ namespace Overlay
             g.DrawString(text, font, brush, textLocation);
         }
 
-        private void MainForm_VisibleChanged(object sender, EventArgs e)
-        {
-            if (this.Visible == true)
-            {
-                if (this.timer.IsRun == false)
-                {
-                    this.timer.Run();
-                }
-            }
-            else
-            {
-                if (this.timer.IsRun == true)
-                {
-                    this.timer.Stop();
-                }
-            }
-        }
-
         private void MainForm_FormClosed(object sender, FormClosedEventArgs e)
         {
-            this.timer1.Stop();
-            this.timer.Stop();
-
-            //UnRegist Global Hotkey
-            UnregisterHotKey((int)this.hwnd, 0);
-            UnregisterHotKey((int)this.hwnd, 1);
-            UnregisterHotKey((int)this.hwnd, 2);
-            UnregisterHotKey((int)this.hwnd, 3);
-            UnregisterHotKey((int)this.hwnd, 4);
+            HotKeyManager.Ins.UnregistAllKeys();
         }
 
         protected override void WndProc(ref Message m)
@@ -282,6 +248,7 @@ namespace Overlay
             //0x312 WM_HOTKEY
             if (m.Msg == 0x312)
             {
+              
                 switch (m.WParam)
                 {
                     case (IntPtr)0x0: this.HotKey_Up(); break;
@@ -289,6 +256,11 @@ namespace Overlay
                     case (IntPtr)0x2: this.HotKey_Left(); break;
                     case (IntPtr)0x3: this.HotKey_Right(); break;
                     case (IntPtr)0x4: this.HotKey_End(); break;
+
+                    case (IntPtr)0x5: this.HotKey_Num4(); break;
+                    case (IntPtr)0x6: this.HotKey_Num6(); break;
+                    case (IntPtr)0x7: this.HotKey_Num8(); break;
+                    case (IntPtr)0x8: this.HotKey_Num2(); break;
                 }
             }
         }
@@ -302,11 +274,18 @@ namespace Overlay
         {
             if (this.Visible == true)
             {
-                this.Visible = false;
+                if (this.timer_calc.IsRun == true)
+                {
+                    this.timer_calc.Stop();
+                    LocationData.Ins.charPos.isSelected = false;
+                }
             }
             else
             {
-                this.Visible = true;
+                if (this.timer_calc.IsRun == false)
+                {
+                    this.timer_calc.Run();
+                }
             }
         }
 
@@ -340,14 +319,31 @@ namespace Overlay
 
                 if (_x <= 148 && _y <= 200)
                 {
-                    if(_x == 59 && _y ==  134)  //잘못된 인식 케이스 수정
+                    if (_x == 59 && _y == 134)  //잘못된 인식 케이스 수정
                     {
-                        _x = 30;
+                        _x = 39;
                     }
 
                     LocationData.Ins.Add(_x, _y);
                 }
             }
+        }
+
+        private void HotKey_Num4()
+        {
+            __x--;
+        }
+        private void HotKey_Num6()
+        {
+            __x++;
+        }
+        private void HotKey_Num8()
+        {
+            __y--;
+        }
+        private void HotKey_Num2()
+        {
+            __y++;
         }
 
         private Bitmap GetScreenImage()
@@ -370,6 +366,41 @@ namespace Overlay
                 }
 
                 return bmp;
+            }
+        }
+
+        private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            DirectX2DRender.Ins.Dispose();
+            this.timer_calc.Stop();
+            this.timer_display.Stop();
+        }
+
+        private void MainForm_SizeChanged(object sender, EventArgs e)
+        {
+            lock (this._locker)
+            {
+                DirectX2DRender.Ins.Initialize(this.panel1);
+            }
+        }
+
+        private void timer1_Tick(object sender, EventArgs e)
+        {
+            GetWindowRect(this.hwnd, out RECT rect);
+            if (this.Location.X!= rect.Left || this.Location.Y != rect.Top)
+            {
+                SetWindowPos(this.Handle, IntPtr.Zero, rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top, 0x0000);
+            }
+
+            if (LocationData.Ins.charPos.isSelected == true)
+            {
+                if(this.Visible == false)
+                    this.Visible = true;
+            }
+            else
+            {
+                if(this.Visible == true)
+                    this.Visible = false;
             }
         }
     }

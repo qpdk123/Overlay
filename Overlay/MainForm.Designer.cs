@@ -29,24 +29,22 @@
         private void InitializeComponent()
         {
             components = new System.ComponentModel.Container();
+            panel1 = new Panel();
             timer1 = new System.Windows.Forms.Timer(components);
-            dF_Panel1 = new DF_Panel();
             SuspendLayout();
+            // 
+            // panel1
+            // 
+            panel1.Dock = DockStyle.Fill;
+            panel1.Location = new Point(0, 0);
+            panel1.Margin = new Padding(0);
+            panel1.Name = "panel1";
+            panel1.Size = new Size(800, 450);
+            panel1.TabIndex = 0;
             // 
             // timer1
             // 
-            timer1.Interval = 500;
             timer1.Tick += timer1_Tick;
-            // 
-            // dF_Panel1
-            // 
-            dF_Panel1.Dock = DockStyle.Fill;
-            dF_Panel1.Location = new Point(0, 0);
-            dF_Panel1.Margin = new Padding(0);
-            dF_Panel1.Name = "dF_Panel1";
-            dF_Panel1.Size = new Size(800, 450);
-            dF_Panel1.TabIndex = 0;
-            dF_Panel1.Paint += dF_Panel1_Paint;
             // 
             // MainForm
             // 
@@ -54,19 +52,20 @@
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(800, 450);
             ControlBox = false;
-            Controls.Add(dF_Panel1);
+            Controls.Add(panel1);
             Name = "MainForm";
             Text = "Form1";
             TopMost = true;
+            FormClosing += MainForm_FormClosing;
             FormClosed += MainForm_FormClosed;
             Load += MainForm_Load;
-            VisibleChanged += MainForm_VisibleChanged;
+            SizeChanged += MainForm_SizeChanged;
             ResumeLayout(false);
         }
 
         #endregion
 
+        private Panel panel1;
         private System.Windows.Forms.Timer timer1;
-        private DF_Panel dF_Panel1;
     }
 }

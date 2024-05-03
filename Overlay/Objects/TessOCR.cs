@@ -1,9 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using Modules;
+using SharpDX;
+using System.Diagnostics;
+using System.Drawing.Imaging;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using Tesseract;
 
 namespace Overlay.Objects
@@ -66,19 +65,45 @@ namespace Overlay.Objects
 
         public string ReadFromMap(Bitmap src)
         {
-            //이미지의 크기를 두배로 키움
-            src = new Bitmap(src, src.Width * 5, src.Height * 5);
-            src = this.MapLocReadFilter(src);
-            src = this.DilateImage(src, false, 4);
-
-            using (var engine = new TesseractEngine(@"./tessdata", "eng", EngineMode.TesseractOnly))
+            string result = string.Empty;
+            try
             {
-                engine.SetVariable("tessedit_char_whitelist", "0123456789,()");
-                Pix pix = Pix.LoadFromMemory(this.ImageToByte(src));
-                var result = engine.Process(pix);
-                return result.GetText();
+                //이미지의 크기를 두배로 키움
+                Bitmap target = new Bitmap(src, src.Width * 2, src.Height * 2);
+                Bitmap filter = this.MapLocReadFilter_unsafe(target);
+                Bitmap dilate = this.DilateImage_unsafe(filter, 2);
+                //filter.Save("C:\\Users\\Administrator\\Desktop\\Resources\\filter.bmp");
+                //dilate.Save("C:\\Users\\Administrator\\Desktop\\Resources\\dilate.bmp");
+                using (var engine = new TesseractEngine(@"./tessdata", "eng", EngineMode.TesseractOnly))
+                {
+                    engine.SetVariable("tessedit_char_whitelist", "0123456789,()");
+                    Pix pix = Pix.LoadFromMemory(this.ImageToByte(dilate));
+                    var ret = engine.Process(pix);
+                    //Page.GetText() 메모리 누수 발견
+                    //Nuget Package : Tesseract 5.2.0 version
+                    result = ret.GetText();
+
+                    ret.Dispose();
+                    pix.Dispose();
+                    engine.Dispose();
+                }
+
+                dilate?.Dispose();
+                filter?.Dispose();
+                target?.Dispose();
+            }
+            catch (Exception ex)
+            {
+
+                throw ex;
+            }
+            finally
+            {
+                GC.Collect();
             }
 
+
+            return result;
         }
 
         private Bitmap ConvertToGrayScale(Bitmap image)
@@ -106,7 +131,7 @@ namespace Overlay.Objects
 
         private Bitmap MapLocReadFilter(Bitmap image)
         {
-            Bitmap darkenedImage = new Bitmap(image.Width, image.Height);
+            Bitmap result = new Bitmap(image.Width, image.Height);
 
             // 모든 픽셀에 대해 어두운 필터 적용
             for (int y = 0; y < image.Height; y++)
@@ -119,12 +144,56 @@ namespace Overlay.Objects
                         (cel.B > 200 && cel.B < 220))
                     {
                         Color color = Color.FromArgb(0, 0, 0);
-                        darkenedImage.SetPixel(x, y, color);
+                        result.SetPixel(x, y, color);
                     }
                 }
             }
 
-            return darkenedImage;
+            return result;
+        }
+
+        private unsafe Bitmap MapLocReadFilter_unsafe(Bitmap image)
+        {
+            // 비트맵 포맷에 따라 PixelFormat을 설정합니다.
+            BitmapData bitmapData = image.LockBits(
+                new Rectangle(0, 0, image.Width, image.Height),
+                ImageLockMode.ReadWrite,
+                image.PixelFormat);
+
+            // 픽셀 데이터에 대한 포인터를 얻습니다.
+            byte* scan0 = (byte*)bitmapData.Scan0.ToPointer();
+
+            for (int y = 0; y < bitmapData.Height; y++)
+            {
+                for (int x = 0; x < bitmapData.Width; x++)
+                {
+                    // 픽셀 위치를 계산합니다.
+                    byte* cel = scan0 + y * bitmapData.Stride + x * 4;
+                    //Color cel = image.GetPixel(x, y);
+
+                    //    if ((cel[2] > 50 && cel[2] < 110) &&
+                    //(cel[1] > 240 && cel[1] < 255) &&
+                    //    (cel[0] > 200 && cel[0] < 220))
+                    if ((cel[2] > 40 && cel[2] < 120) && (cel[1] > 230 && cel[1] < 255) && (cel[0] > 190 && cel[0] < 230))
+                    {
+                        cel[0] = 0;
+                        cel[1] = 0;
+                        cel[2] = 0;
+                        //cel[3] = 255;
+                    }
+                    else
+                    {
+                        cel[0] = 255;
+                        cel[1] = 255;
+                        cel[2] = 255;
+                        //cel[3] = 255;
+                    }
+                }
+            }
+
+            image.UnlockBits(bitmapData);
+            image.MakeTransparent();
+            return image;
         }
 
         private Bitmap ItemLocReadFilter(Bitmap image)
@@ -152,6 +221,48 @@ namespace Overlay.Objects
             }
 
             return darkenedImage;
+        }
+
+        public unsafe Bitmap ItemLocReadFilter_unsafe(Bitmap image)
+        {
+            // 비트맵 포맷에 따라 PixelFormat을 설정합니다.
+            BitmapData bitmapData = image.LockBits(
+                new Rectangle(0, 0, image.Width, image.Height),
+                ImageLockMode.ReadWrite,
+                image.PixelFormat);
+
+            // 픽셀 데이터에 대한 포인터를 얻습니다.
+            byte* scan0 = (byte*)bitmapData.Scan0.ToPointer();
+
+            for (int y = 0; y < bitmapData.Height; y++)
+            {
+                for (int x = 0; x < bitmapData.Width; x++)
+                {
+                    // 픽셀 위치를 계산합니다.
+                    byte* cel = scan0 + y * bitmapData.Stride + x * 4;
+
+                    if (cel[2] <= 150 && cel[1] <= 150 && cel[0] <= 150)
+                    {
+                        cel[0] = 255;
+                        cel[1] = 255;
+                        cel[2] = 255;
+                        //Color color = Color.FromArgb(255, 255, 255);
+                        //darkenedImage.SetPixel(x, y, color);
+                    }
+                    else
+                    {
+                        cel[0] = 0;
+                        cel[1] = 0;
+                        cel[2] = 0;
+                        //Color color = Color.FromArgb(0, 0, 0);
+                        //darkenedImage.SetPixel(x, y, color);
+                    }
+                }
+            }
+
+            image.UnlockBits(bitmapData);
+            image.MakeTransparent();
+            return image;
         }
 
         // 이미지에 어두운 필터 적용하는 메서드
@@ -245,75 +356,112 @@ namespace Overlay.Objects
             return result;
         }
 
-        private Bitmap DilateImage(Bitmap original, bool white = true, int dilationSize = 4)
+        private Bitmap DilateImage(Bitmap original, int dilationSize = 4)
         {
-            // 팽창할 크기 정의
-
             Bitmap result = new Bitmap(original.Width, original.Height);
 
             for (int y = 0; y < original.Height; y++)
             {
                 for (int x = 0; x < original.Width; x++)
                 {
-                    // 현재 픽셀의 색상을 가져옴
-                    Color pixelColor = original.GetPixel(x, y);
-                    if (white == true)
-                    {
-                        // 현재 픽셀이 흰색인 경우 주변의 픽셀도 흰색으로 설정
-                        if (pixelColor.ToArgb() == Color.White.ToArgb())
-                        {
-                            for (int i = -dilationSize; i <= dilationSize; i++)
-                            {
-                                for (int j = -dilationSize; j <= dilationSize; j++)
-                                {
-                                    int newX = x + i;
-                                    int newY = y + j;
 
-                                    // 이미지 경계 내에 있는 경우만 처리
-                                    if (newX >= 0 && newX < original.Width && newY >= 0 && newY < original.Height)
-                                    {
-                                        result.SetPixel(newX, newY, Color.White);
-                                    }
+                    Color pixelColor = original.GetPixel(x, y);
+
+                    if (pixelColor.ToArgb() == Color.Black.ToArgb())
+                    {
+                        for (int i = -dilationSize; i <= dilationSize; i++)
+                        {
+                            for (int j = -dilationSize; j <= dilationSize; j++)
+                            {
+                                int newX = x + i;
+                                int newY = y + j;
+
+                                if (newX >= 0 && newX < original.Width && newY >= 0 && newY < original.Height)
+                                {
+                                    result.SetPixel(newX, newY, Color.Black);
                                 }
                             }
-                        }
-                        else
-                        {
-                            // 현재 픽셀이 검은색인 경우 검은색으로 설정
-                            result.SetPixel(x, y, Color.Black);
                         }
                     }
                     else
                     {
-                        // 현재 픽셀이 흰색인 경우 주변의 픽셀도 흰색으로 설정
-                        if (pixelColor.ToArgb() == Color.Black.ToArgb())
-                        {
-                            for (int i = -dilationSize; i <= dilationSize; i++)
-                            {
-                                for (int j = -dilationSize; j <= dilationSize; j++)
-                                {
-                                    int newX = x + i;
-                                    int newY = y + j;
+                        result.SetPixel(x, y, Color.White);
+                    }
+                }
+            }
+            return result;
+        }
 
-                                    // 이미지 경계 내에 있는 경우만 처리
-                                    if (newX >= 0 && newX < original.Width && newY >= 0 && newY < original.Height)
-                                    {
-                                        result.SetPixel(newX, newY, Color.Black);
-                                    }
+        private unsafe Bitmap DilateImage_unsafe(Bitmap original, int dilationSize = 4)
+        {
+            Bitmap result = new Bitmap(original.Width, original.Height);
+
+            // 원본 이미지 Lock
+            BitmapData originalData = original.LockBits(
+                new Rectangle(0, 0, original.Width, original.Height),
+                ImageLockMode.ReadOnly,
+                PixelFormat.Format32bppArgb);
+
+            // 결과 이미지 Lock
+            BitmapData resultData = result.LockBits(
+                new Rectangle(0, 0, result.Width, result.Height),
+                ImageLockMode.WriteOnly,
+                PixelFormat.Format32bppArgb);
+
+
+            int bytesPerPixel = Image.GetPixelFormatSize(original.PixelFormat) / 8;
+            byte* ptrOriginal = (byte*)originalData.Scan0;
+            byte* ptrResult = (byte*)resultData.Scan0;
+
+            for (int y = 0; y < original.Height; y++)
+            {
+                for (int x = 0; x < original.Width; x++)
+                {
+                    byte* currentPixel = ptrOriginal + (y * originalData.Stride) + (x * bytesPerPixel);
+                    byte blue = currentPixel[0];
+                    byte green = currentPixel[1];
+                    byte red = currentPixel[2];
+                    byte alpha = currentPixel[3];
+
+                    if (red == 0 && green == 0 && blue == 0) // 검은색 픽셀인 경우
+                    {
+                        for (int i = -dilationSize; i <= dilationSize; i++)
+                        {
+                            for (int j = -dilationSize; j <= dilationSize; j++)
+                            {
+                                int newX = x + i;
+                                int newY = y + j;
+
+                                if (newX >= 0 && newX < original.Width && newY >= 0 && newY < original.Height)
+                                {
+                                    byte* targetPixel = ptrResult + (newY * resultData.Stride) + (newX * bytesPerPixel);
+                                    targetPixel[0] = 0; // Blue
+                                    targetPixel[1] = 0; // Green
+                                    targetPixel[2] = 0; // Red
+                                    targetPixel[3] = alpha; // Alpha
                                 }
                             }
                         }
-                        else
-                        {
-                            // 현재 픽셀이 검은색인 경우 검은색으로 설정
-                            result.SetPixel(x, y, Color.White);
-                        }
+                    }
+                    else // 흰색 픽셀인 경우
+                    {
+                        byte* targetPixel = ptrResult + (y * resultData.Stride) + (x * bytesPerPixel);
+                        targetPixel[0] = 255; // Blue
+                        targetPixel[1] = 255; // Green
+                        targetPixel[2] = 255; // Red
+                        targetPixel[3] = alpha; // Alpha
                     }
                 }
             }
 
+
+            // 이미지의 잠금을 해제
+            original.UnlockBits(originalData);
+            result.UnlockBits(resultData);
+
             return result;
         }
+
 
         // 이미지 색상 반전 함수
         private Bitmap InvertColors(Bitmap original)
