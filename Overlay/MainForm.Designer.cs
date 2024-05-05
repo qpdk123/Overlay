@@ -31,6 +31,7 @@
             components = new System.ComponentModel.Container();
             panel1 = new Panel();
             timer1 = new System.Windows.Forms.Timer(components);
+            hotkeyManager1 = new Modules.HotkeyManager();
             SuspendLayout();
             // 
             // panel1
@@ -45,6 +46,10 @@
             // timer1
             // 
             timer1.Tick += timer1_Tick;
+            // 
+            // hotkeyManager1
+            // 
+            hotkeyManager1.PressedHotkey += HotkeyManager1_PressedHotkey;
             // 
             // MainForm
             // 
@@ -67,5 +72,6 @@
 
         private Panel panel1;
         private System.Windows.Forms.Timer timer1;
+        private Modules.HotkeyManager hotkeyManager1;
     }
 }

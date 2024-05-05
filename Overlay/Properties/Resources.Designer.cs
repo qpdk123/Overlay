@@ -63,9 +63,9 @@ namespace Overlay.Properties {
         /// <summary>
         ///   System.Drawing.Bitmap 형식의 지역화된 리소스를 찾습니다.
         /// </summary>
-        internal static System.Drawing.Bitmap map {
+        internal static System.Drawing.Bitmap map_abyss {
             get {
-                object obj = ResourceManager.GetObject("map", resourceCulture);
+                object obj = ResourceManager.GetObject("map_abyss", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }
@@ -73,9 +73,9 @@ namespace Overlay.Properties {
         /// <summary>
         ///   System.Drawing.Bitmap 형식의 지역화된 리소스를 찾습니다.
         /// </summary>
-        internal static System.Drawing.Bitmap mapHD {
+        internal static System.Drawing.Bitmap map_beach {
             get {
-                object obj = ResourceManager.GetObject("mapHD", resourceCulture);
+                object obj = ResourceManager.GetObject("map_beach", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }

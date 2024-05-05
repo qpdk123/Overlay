@@ -32,15 +32,7 @@ namespace Overlay.Objects
 
             src = new Bitmap(src, src.Width * 3, src.Height * 3);
             src = this.ItemLocReadFilter(src);
-            //src = this.DilateImage(src, false, 1);
-
-
-            //string pathDir = Path.Combine(Directory.GetCurrentDirectory(), "ItemLog");
-            //if (Directory.Exists(pathDir) == false)
-            //{
-            //    Directory.CreateDirectory(pathDir);
-            //}
-
+            
             using (var engine = new TesseractEngine(@"./tessdata", "eng", EngineMode.TesseractOnly))
             {
                 engine.SetVariable("tessedit_char_whitelist", "0123456789,()");
@@ -49,16 +41,6 @@ namespace Overlay.Objects
                 ret = result.GetText();
 
                 ret = this.ExtractCoordinates(ret);
-
-                //string logName = string.Format("[{0}{1}{2}.{3}]-[RET {4}].bmp",
-                //    DateTime.Now.Hour,
-                //    DateTime.Now.Minute,
-                //    DateTime.Now.Second,
-                //    DateTime.Now.Millisecond,
-                //    ret);
-
-                //string pathLog = Path.Combine(pathDir, logName);
-                //src.Save(pathLog);
             }
             return ret;
         }
@@ -102,52 +84,6 @@ namespace Overlay.Objects
                 GC.Collect();
             }
 
-
-            return result;
-        }
-
-        private Bitmap ConvertToGrayScale(Bitmap image)
-        {
-            Bitmap grayImage = new Bitmap(image.Width, image.Height);
-
-            // 모든 픽셀에 대해 그레이스케일로 변환
-            for (int y = 0; y < image.Height; y++)
-            {
-                for (int x = 0; x < image.Width; x++)
-                {
-                    Color pixel = image.GetPixel(x, y);
-
-                    // R, G, B 값을 평균하여 그레이스케일 값 계산
-                    int grayValue = (int)((pixel.R + pixel.G + pixel.B) / 3.0);
-
-                    // 새로운 색상으로 픽셀 설정
-                    Color newPixel = Color.FromArgb(grayValue, grayValue, grayValue);
-                    grayImage.SetPixel(x, y, newPixel);
-                }
-            }
-
-            return grayImage;
-        }
-
-        private Bitmap MapLocReadFilter(Bitmap image)
-        {
-            Bitmap result = new Bitmap(image.Width, image.Height);
-
-            // 모든 픽셀에 대해 어두운 필터 적용
-            for (int y = 0; y < image.Height; y++)
-            {
-                for (int x = 0; x < image.Width; x++)
-                {
-                    Color cel = image.GetPixel(x, y);
-                    if ((cel.R > 50 && cel.R < 110) &&
-                    (cel.G > 240 && cel.G < 255) &&
-                        (cel.B > 200 && cel.B < 220))
-                    {
-                        Color color = Color.FromArgb(0, 0, 0);
-                        result.SetPixel(x, y, color);
-                    }
-                }
-            }
 
             return result;
         }
@@ -265,32 +201,6 @@ namespace Overlay.Objects
             return image;
         }
 
-        // 이미지에 어두운 필터 적용하는 메서드
-        private Bitmap ApplyDarkFilter(Bitmap image, int darknessLevel)
-        {
-            Bitmap darkenedImage = new Bitmap(image.Width, image.Height);
-
-            // 모든 픽셀에 대해 어두운 필터 적용
-            for (int y = 0; y < image.Height; y++)
-            {
-                for (int x = 0; x < image.Width; x++)
-                {
-                    Color pixel = image.GetPixel(x, y);
-
-                    // 픽셀의 RGB 값을 어두운 정도만큼 감소
-                    int red = Math.Max(pixel.R - darknessLevel, 0);
-                    int green = Math.Max(pixel.G - darknessLevel, 0);
-                    int blue = Math.Max(pixel.B - darknessLevel, 0);
-
-                    // 새로운 색상으로 픽셀 설정
-                    Color newPixel = Color.FromArgb(red, green, blue);
-                    darkenedImage.SetPixel(x, y, newPixel);
-                }
-            }
-
-            return darkenedImage;
-        }
-
         private Bitmap MedianFilter(Bitmap original, int kernelSize)
         {
             Bitmap result = new Bitmap(original.Width, original.Height);
@@ -334,61 +244,6 @@ namespace Overlay.Objects
                 }
             }
 
-            return result;
-        }
-
-        public Bitmap GammaCorrection(Bitmap image, float gamma)
-        {
-            Bitmap result = new Bitmap(image.Width, image.Height);
-
-            for (int x = 0; x < image.Width; x++)
-            {
-                for (int y = 0; y < image.Height; y++)
-                {
-                    Color pixelColor = image.GetPixel(x, y);
-                    int r = (int)(255 * Math.Pow(pixelColor.R / 255.0, 1 / gamma));
-                    int g = (int)(255 * Math.Pow(pixelColor.G / 255.0, 1 / gamma));
-                    int b = (int)(255 * Math.Pow(pixelColor.B / 255.0, 1 / gamma));
-                    result.SetPixel(x, y, Color.FromArgb(r, g, b));
-                }
-            }
-
-            return result;
-        }
-
-        private Bitmap DilateImage(Bitmap original, int dilationSize = 4)
-        {
-            Bitmap result = new Bitmap(original.Width, original.Height);
-
-            for (int y = 0; y < original.Height; y++)
-            {
-                for (int x = 0; x < original.Width; x++)
-                {
-
-                    Color pixelColor = original.GetPixel(x, y);
-
-                    if (pixelColor.ToArgb() == Color.Black.ToArgb())
-                    {
-                        for (int i = -dilationSize; i <= dilationSize; i++)
-                        {
-                            for (int j = -dilationSize; j <= dilationSize; j++)
-                            {
-                                int newX = x + i;
-                                int newY = y + j;
-
-                                if (newX >= 0 && newX < original.Width && newY >= 0 && newY < original.Height)
-                                {
-                                    result.SetPixel(newX, newY, Color.Black);
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        result.SetPixel(x, y, Color.White);
-                    }
-                }
-            }
             return result;
         }
 
@@ -460,49 +315,6 @@ namespace Overlay.Objects
             result.UnlockBits(resultData);
 
             return result;
-        }
-
-
-        // 이미지 색상 반전 함수
-        private Bitmap InvertColors(Bitmap original)
-        {
-            Bitmap result = new Bitmap(original.Width, original.Height);
-
-            for (int y = 0; y < original.Height; y++)
-            {
-                for (int x = 0; x < original.Width; x++)
-                {
-                    Color pixelColor = original.GetPixel(x, y);
-
-                    // 픽셀의 RGB 값을 반전시킴
-                    Color invertedColor = Color.FromArgb(255 - pixelColor.R, 255 - pixelColor.G, 255 - pixelColor.B);
-
-                    // 결과 이미지에 새로운 색상 설정
-                    result.SetPixel(x, y, invertedColor);
-                }
-            }
-
-            return result;
-        }
-
-        private Bitmap BinarizeImage(Bitmap originalImage, int threshold)
-        {
-            Bitmap binarizedImage = new Bitmap(originalImage.Width, originalImage.Height);
-
-            // 각 픽셀의 밝기를 확인하여 임계값 이상인지 판별하여 흰색 또는 검은색으로 설정
-            for (int y = 0; y < originalImage.Height; y++)
-            {
-                for (int x = 0; x < originalImage.Width; x++)
-                {
-                    Color pixelColor = originalImage.GetPixel(x, y);
-                    int brightness = (int)(0.299 * pixelColor.R + 0.587 * pixelColor.G + 0.114 * pixelColor.B);
-
-                    Color newColor = brightness > threshold ? Color.White : Color.Black;
-                    binarizedImage.SetPixel(x, y, newColor);
-                }
-            }
-
-            return binarizedImage;
         }
 
         private byte[] ImageToByte(Image img)

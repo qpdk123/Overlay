@@ -45,10 +45,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="Resources\map.png">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Resources\mapHD.png">
+    <None Update="Resources\map_beach.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="tessdata\eng.traineddata">
